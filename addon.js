@@ -1,4 +1,4 @@
-// moonhunt-Spotify-playlist-bridge v0.0.2 — reference addon (community format).
+// moonhunt-Spotify-playlist-bridge v0.0.3 — reference addon (community format).
 // Paste a Spotify track/playlist/album link, match tracks on YouTube
 // via yt-dlp, download each song or the whole list.
 //
@@ -340,6 +340,8 @@ export default {
     },
     // Media-page prerequisites, shown as a status strip. MP3 downloads need
     // a merger (FFmpeg); without one, matching works but extraction fails.
+    // Pills name the effective runtime/merger: explicit selection wins,
+    // otherwise the backend's automatic fallback (if usable).
     async checkRequirements() {
       if (this.reqChecking) return
       this.reqChecking = true
@@ -349,13 +351,51 @@ export default {
           this.host.invoke('get_js_runtimes').catch(() => null),
           this.host.invoke('get_mergers').catch(() => null),
         ])
-        const runtimeOk = !!(runtimes && (
-          runtimes.systemNode || (runtimes.runtimes || []).some((r) => r.installed)
-        ))
-        const mergerOk = !!(mergers && (
-          (mergers.mergers || []).some((m) => m.installed) || mergers.systemFfmpeg
-        ))
-        this.reqStatus = { ytdlp: ytdlp === true, runtime: runtimeOk, merger: mergerOk }
+        let runtimeName = ''
+        let runtimeOk = false
+        if (runtimes) {
+          const list = runtimes.runtimes || []
+          const sys = runtimes.systemNode || null
+          const chosen = list.find((r) => r.selected && r.installed)
+          if (sys && sys.selected) {
+            runtimeName = 'System Node.js'
+            runtimeOk = true
+          } else if (chosen) {
+            runtimeName = chosen.name || chosen.id
+            runtimeOk = true
+          } else if (sys) {
+            runtimeName = 'System Node.js (auto)'
+            runtimeOk = true
+          } else if (list.some((r) => r.installed)) {
+            runtimeName = 'Node.js (auto, PATH)'
+            runtimeOk = true
+          }
+        }
+        let mergerName = ''
+        let mergerOk = false
+        if (mergers) {
+          const list = mergers.mergers || []
+          const sys = mergers.systemFfmpeg || null
+          const chosen = list.find((m) => m.selected && m.installed)
+          const anyInstalled = list.find((m) => m.installed)
+          if (sys && sys.selected) {
+            mergerName = 'System FFmpeg'
+            mergerOk = true
+          } else if (chosen) {
+            mergerName = chosen.name || chosen.id
+            mergerOk = true
+          } else if (anyInstalled) {
+            mergerName = `${anyInstalled.name || anyInstalled.id} (auto)`
+            mergerOk = true
+          }
+        }
+        this.reqStatus = {
+          ytdlp: ytdlp === true,
+          runtime: runtimeOk,
+          runtimeName,
+          merger: mergerOk,
+          mergerName,
+        }
       } finally {
         this.reqChecking = false
       }
@@ -480,12 +520,22 @@ export default {
       }
     },
     reqStrip(h) {
-      const items = [
-        { key: 'ytdlp', label: 'yt-dlp' },
-        { key: 'runtime', label: 'JS runtime' },
-        { key: 'merger', label: 'Merger (MP3)' },
-      ]
       const st = this.reqStatus
+      const items = [
+        { key: 'ytdlp', label: 'yt-dlp', detail: '' },
+        {
+          key: 'runtime',
+          label: (st && st.runtimeName) || 'JS runtime',
+          detail: st && st.runtimeName ? `In use: ${st.runtimeName}` : 'Set up on the Media page',
+        },
+        {
+          key: 'merger',
+          label: (st && st.mergerName) || 'Merger (MP3)',
+          detail: st && st.mergerName
+            ? `In use: ${st.mergerName}`
+            : 'Required for MP3 extraction — set up on the Media page',
+        },
+      ]
       return h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center' },
         items.map((it) => {
           const ok = st ? !!st[it.key] : null
@@ -493,8 +543,8 @@ export default {
           const icon = this.reqChecking ? 'hourglass_top' : ok === null ? 'help_outline' : ok ? 'check_circle' : 'error_outline'
           return h('span', {
             key: it.key,
-            title: it.key === 'merger' ? 'Required for MP3 extraction — set up on the Media page' : 'Set up on the Media page',
-            style: `display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${color};background:var(--hover-bg);border:1px solid var(--border);border-radius:100px;padding:4px 10px`,
+            title: it.detail || 'Set up on the Media page',
+            style: `display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${color};background:var(--hover-bg);border:1px solid var(--border);border-radius:100px;padding:4px 10px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`,
           }, [h('i', { class: 'material-icons', style: 'font-size:14px' }, icon), it.label])
         }).concat(
           st && (!st.ytdlp || !st.runtime || !st.merger)
@@ -537,7 +587,7 @@ export default {
       h('div', { class: 'nd-card-body' }, body),
     ])
 
-    const main = card('moonhunt-Spotify-playlist-bridge', 'v0.0.2 · Paste a Spotify link, match on YouTube, download.', 'library_music', [
+    const main = card('moonhunt-Spotify-playlist-bridge', 'v0.0.3 · Paste a Spotify link, match on YouTube, download.', 'library_music', [
       this.reqStrip(h),
       h('div', { class: 'nd-field' }, [
         h('label', { class: 'nd-label' }, [h('i', { class: 'material-icons nd-label-icon' }, 'link'), 'Spotify URL']),

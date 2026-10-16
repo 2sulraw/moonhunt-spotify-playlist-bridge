@@ -1,7 +1,7 @@
 {
   "id": "moonhunt-spotify-playlist-bridge",
   "name": "moonhunt-Spotify-playlist-bridge",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "MoonHunt",
   "entry": "addon.js",
   "icon": "library_music",
