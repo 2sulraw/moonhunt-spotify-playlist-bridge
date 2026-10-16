@@ -1,4 +1,4 @@
-// moonhunt-Spotify-playlist-bridge v0.0.1 — reference addon (community format).
+// moonhunt-Spotify-playlist-bridge v0.0.2 — reference addon (community format).
 // Paste a Spotify track/playlist/album link, match tracks on YouTube
 // via yt-dlp, download each song or the whole list.
 //
@@ -166,12 +166,15 @@ export default {
       cancelRequested: false,
       audioFormat: 'mp3',
       searchMode: 'legacy',
+      reqChecking: false,
+      reqStatus: null,
       showManual: false,
       manualText: '',
     }
   },
   created() {
     this.searchMode = loadSearchMode()
+    this.checkRequirements()
   },
   computed: {
     matchedCount() {
@@ -211,6 +214,11 @@ export default {
       const u = (this.url || '').trim()
       if (!u) {
         this.host.notify('Please enter a URL', 'error')
+        return
+      }
+      await this.checkRequirements()
+      if (this.reqStatus && !this.reqStatus.ytdlp) {
+        this.resolveError = 'yt-dlp is not installed — set it up on the Media page first.'
         return
       }
       this.resolving = true
@@ -329,6 +337,28 @@ export default {
     },
     cancelSearch() {
       this.matchCancel = true
+    },
+    // Media-page prerequisites, shown as a status strip. MP3 downloads need
+    // a merger (FFmpeg); without one, matching works but extraction fails.
+    async checkRequirements() {
+      if (this.reqChecking) return
+      this.reqChecking = true
+      try {
+        const [ytdlp, runtimes, mergers] = await Promise.all([
+          this.host.invoke('check_yt_dlp_exists').catch(() => false),
+          this.host.invoke('get_js_runtimes').catch(() => null),
+          this.host.invoke('get_mergers').catch(() => null),
+        ])
+        const runtimeOk = !!(runtimes && (
+          runtimes.systemNode || (runtimes.runtimes || []).some((r) => r.installed)
+        ))
+        const mergerOk = !!(mergers && (
+          (mergers.mergers || []).some((m) => m.installed) || mergers.systemFfmpeg
+        ))
+        this.reqStatus = { ytdlp: ytdlp === true, runtime: runtimeOk, merger: mergerOk }
+      } finally {
+        this.reqChecking = false
+      }
     },
     setSearchMode(mode) {
       if (!SEARCH_MODES.some((m) => m.key === mode)) return
@@ -449,8 +479,31 @@ export default {
         this.host.notify(`List cleared. Could not check running downloads: ${String(e)}`, 'info')
       }
     },
-    queueRing(h) {
-      const pct = Math.max(0, Math.min(100, this.queuePct))
+    reqStrip(h) {
+      const items = [
+        { key: 'ytdlp', label: 'yt-dlp' },
+        { key: 'runtime', label: 'JS runtime' },
+        { key: 'merger', label: 'Merger (MP3)' },
+      ]
+      const st = this.reqStatus
+      return h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center' },
+        items.map((it) => {
+          const ok = st ? !!st[it.key] : null
+          const color = ok === null ? 'var(--text-dim)' : ok ? 'var(--accent-strong)' : '#e5484d'
+          const icon = this.reqChecking ? 'hourglass_top' : ok === null ? 'help_outline' : ok ? 'check_circle' : 'error_outline'
+          return h('span', {
+            key: it.key,
+            title: it.key === 'merger' ? 'Required for MP3 extraction — set up on the Media page' : 'Set up on the Media page',
+            style: `display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${color};background:var(--hover-bg);border:1px solid var(--border);border-radius:100px;padding:4px 10px`,
+          }, [h('i', { class: 'material-icons', style: 'font-size:14px' }, icon), it.label])
+        }).concat(
+          st && (!st.ytdlp || !st.runtime || !st.merger)
+            ? [h('span', { style: 'font-size:11px;color:var(--text-dim)' }, 'Missing pieces are set up on the Media page.')]
+            : [],
+        ),
+      )
+    },
+    queueRing(h) {      const pct = Math.max(0, Math.min(100, this.queuePct))
       return h('svg', { width: 40, height: 40, viewBox: '0 0 42 42', title: `${pct}%` }, [
         h('circle', { cx: 21, cy: 21, r: 15.9155, fill: 'transparent', stroke: 'var(--border)', 'stroke-width': 4 }),
         h('circle', {
@@ -484,7 +537,8 @@ export default {
       h('div', { class: 'nd-card-body' }, body),
     ])
 
-    const main = card('moonhunt-Spotify-playlist-bridge', 'v0.0.1 · Paste a Spotify link, match on YouTube, download.', 'library_music', [
+    const main = card('moonhunt-Spotify-playlist-bridge', 'v0.0.2 · Paste a Spotify link, match on YouTube, download.', 'library_music', [
+      this.reqStrip(h),
       h('div', { class: 'nd-field' }, [
         h('label', { class: 'nd-label' }, [h('i', { class: 'material-icons nd-label-icon' }, 'link'), 'Spotify URL']),
         h('div', { class: 'nd-input-wrap' }, [
