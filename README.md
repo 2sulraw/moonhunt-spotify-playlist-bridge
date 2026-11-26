@@ -35,6 +35,13 @@ list's still-running downloads, and empties the list for a new search.
 - Requires yt-dlp set up in MoonHunt (Media page) and a working YouTube
   connection. Restricted networks need the app's proxy configured.
 
+## Native host
+
+Current MoonHunt builds render this tab with a native Rust host that mirrors
+the addon's UI and behavior. `addon.js` stays the canonical source for the
+WebView ESM host; both are kept in sync. The header shows a **Native host**
+badge when the native renderer is active.
+
 ## Files
 
 - `manifest.json` — addon id, name, version, entry point, link patterns.
